@@ -476,8 +476,10 @@ function renderList(){
   let items=gatherItems();
   if(q) items=items.filter(i=>(i.title+" "+i.authors+" "+i.journal).toLowerCase().includes(q));
   if(hideRead) items=items.filter(i=>!isRead(i.key));
-  // folder / all views mix feeds → sort newest-first; single feed keeps its own order
-  if(!cur || !cur.feed) items=items.slice().sort((a,b)=>((b.ts||b.published||"")).localeCompare(a.ts||a.published||""));
+  // Always sort newest-first — single feed, whole folder, and all-feeds alike.
+  // Parse to a timestamp so non-ISO date strings still order correctly; undated sink to the bottom.
+  const when = it => { const d = new Date(it.ts || it.published || 0); return isNaN(d) ? 0 : d.getTime(); };
+  items = items.slice().sort((a,b) => when(b) - when(a));
   if(!items.length){ list.innerHTML='<div class="empty">Nothing here.</div>'; return; }
   for(const i of items.slice(0,400)){
     const el=document.createElement("div");
