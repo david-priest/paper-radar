@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Radar — RSS + AI Picks</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --ink:#1a1d21; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#2563eb; --accent-soft:#eff4ff; --star:#d97706; --read:#9ca3af;
+    --hi:#fef3c7; --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  html[data-theme="dark"]{
+    --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#283039;
+    --accent:#58a6ff; --accent-soft:#13233f; --star:#f0b429; --read:#586069;
+    --hi:#3a2f12; --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+
+  /* ---------- app shell: full-height left rail + content ---------- */
+  .layout{display:flex;min-height:100vh;align-items:stretch}
+  .rail{width:300px;flex:none;background:var(--panel);border-right:1px solid var(--line);
+    height:100vh;position:sticky;top:0;overflow-y:auto;padding:12px 8px 24px}
+  .brand{font-size:16px;font-weight:700;letter-spacing:-.2px;padding:6px 10px 14px}
+  .brand .dot{color:var(--star)}
+  .content{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  header{position:sticky;top:0;z-index:20;background:var(--panel);border-bottom:1px solid var(--line);
+    padding:12px 24px;display:flex;align-items:center;gap:16px;box-shadow:var(--shadow)}
+  .meta{color:var(--muted);font-size:12.5px}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;
+    padding:6px 11px;font-size:13px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .wrap{max-width:1080px;width:100%;margin:0 auto;padding:18px 24px 8px}
+  section h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    margin:26px 0 12px;font-weight:680}
+  section:first-child h2{margin-top:8px}
+
+  /* ---------- feed tree (rail) ---------- */
+  .fold{display:flex;justify-content:space-between;gap:8px;align-items:center;
+    font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+    padding:11px 9px 4px;font-weight:700;cursor:pointer;border-radius:7px}
+  .fold:hover{color:var(--accent)} .fold.active{color:var(--accent)}
+  .feed{display:flex;justify-content:space-between;gap:8px;padding:5px 9px;border-radius:7px;
+    cursor:pointer;font-size:13px}
+  .feed:hover{background:var(--accent-soft)}
+  .feed.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .feed > span:first-child,.fold > span:first-child{overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;min-width:0}
+  .feed.allf{font-weight:600}
+  .feed.navpick{font-weight:700;color:var(--star);margin-bottom:2px}
+  .feed.navpick .n{color:#fff;background:var(--star)}
+  .feed.navpick.active{background:var(--hi)}
+  .railsep{height:1px;background:var(--line);margin:8px 4px}
+  .feed.kid{padding-left:18px}
+  .feed .n,.fold .n{color:var(--muted);font-size:11px;background:var(--bg);border-radius:10px;
+    padding:0 7px;flex:none}
+  .feed.active .n{color:var(--accent)}
+
+  /* ---------- AI picks ---------- */
+  .picks{display:grid;gap:8px}
+  .pick{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--star);
+    border-radius:10px;padding:10px 14px;box-shadow:var(--shadow);position:relative}
+  .pick.read{opacity:.45;border-left-color:var(--read)}
+  .pick .top{display:flex;gap:11px;align-items:flex-start}
+  .score{flex:none;width:36px;height:36px;border-radius:9px;background:var(--accent-soft);
+    color:var(--accent);display:flex;align-items:center;justify-content:center;
+    font-weight:720;font-size:14px}
+  .pick h3{margin:0 0 2px;font-size:14.5px;line-height:1.3;font-weight:640}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .tags{margin-top:6px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+  .tag{font-size:11.5px;background:var(--accent-soft);color:var(--accent);border-radius:20px;
+    padding:2px 9px}
+  .tag.j{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  .tag.new{background:rgba(22,163,74,.14);color:#15a34a;font-weight:700;
+    text-transform:uppercase;letter-spacing:.04em}
+  .x{margin-left:auto;font-size:12px;color:var(--muted);cursor:pointer;flex:none}
+  .x:hover{color:var(--accent)}
+  .picksmore{display:flex;align-items:center;justify-content:center;gap:8px;
+    color:var(--muted);font-size:12.5px;padding:16px;cursor:pointer;user-select:none}
+  .picksmore:hover{color:var(--accent)}
+
+  /* ---------- profile (read-only) panel ---------- */
+  details.profile{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    box-shadow:var(--shadow);overflow:hidden}
+  details.profile summary{cursor:pointer;padding:12px 16px;font-weight:600;font-size:14px;
+    list-style:none;display:flex;align-items:center;gap:8px}
+  details.profile summary::-webkit-details-marker{display:none}
+  details.profile summary .chev{color:var(--muted);transition:transform .15s}
+  details.profile[open] summary .chev{transform:rotate(90deg)}
+  details.profile .body{border-top:1px solid var(--line);padding:14px 16px}
+  details.profile pre{margin:0;white-space:pre-wrap;word-wrap:break-word;
+    font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
+  details.profile .hint{color:var(--muted);font-size:12px;margin-top:12px;padding-top:10px;
+    border-top:1px dashed var(--line)}
+
+  /* ---------- feed list (Feedly-style one-liners) ---------- */
+  .toolbar{display:flex;gap:10px;margin-bottom:12px;align-items:center}
+  .toolbar input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:9px;
+    background:var(--panel);color:var(--ink);font-size:14px}
+  .scope{color:var(--muted);font-size:12.5px;margin:0 0 10px}
+  .list{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    overflow:hidden;box-shadow:var(--shadow)}
+  .item{display:flex;align-items:center;gap:12px;padding:9px 14px;border-top:1px solid var(--line)}
+  .item:first-child{border-top:none}
+  .item:hover{background:var(--accent-soft)}
+  .item.read{opacity:.5}
+  .item .line{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .line .src{color:var(--muted);font-size:12.5px;margin-left:8px}
+  .item .age{flex:none;color:var(--muted);font-size:12px;width:38px;text-align:right;
+    font-variant-numeric:tabular-nums}
+  .item .mini{flex:none;font-size:11px;color:var(--muted);border:1px solid var(--line);
+    border-radius:5px;padding:1px 7px;cursor:pointer;opacity:0;transition:opacity .1s}
+  .item:hover .mini{opacity:1} .item .mini:hover{color:var(--accent);border-color:var(--accent)}
+  .badge{display:inline-block;font-size:11px;font-weight:680;color:var(--star);margin-right:6px}
+  .empty{color:var(--muted);padding:24px;text-align:center}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:30px}
+
+  /* PDF button (list rows + picks) */
+  .pdf{flex:none;font-size:11px;color:var(--muted);border:1px solid var(--line);
+    border-radius:5px;padding:1px 7px;cursor:pointer;white-space:nowrap}
+  .pdf:hover{color:var(--accent);border-color:var(--accent)}
+  .pdf.busy{opacity:.6;cursor:default} .pdf.ok{color:#15803d;border-color:#15803d}
+  .pdf.fail{color:#b91c1c;border-color:#b91c1c}
+  .item .pdf{opacity:0;transition:opacity .1s} .item:hover .pdf{opacity:1}
+  .pick .tags .pdf{margin-left:0}
+
+  /* Manage feeds view */
+  .mgr{background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+  .mgr h3{margin:0 0 10px;font-size:14px}
+  .mgr .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .mgr input,.mgr select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel);color:var(--ink);font-size:13.5px}
+  .mgr input.url{flex:1;min-width:240px}
+  .mgr .note{color:var(--muted);font-size:12px;margin-top:8px}
+  .mgrfold{display:flex;align-items:center;gap:10px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;color:var(--muted);font-weight:700;margin:16px 0 6px}
+  .mgrfold .ftool{text-transform:none;letter-spacing:0;font-weight:500;font-size:11px;
+    color:var(--accent);cursor:pointer;opacity:.75}
+  .mgrfold:hover .ftool{opacity:1} .mgrfold .ftool:hover{text-decoration:underline}
+  .mgrfold .ftool.danger{color:var(--read)} .mgrfold .ftool.danger:hover{color:#b91c1c}
+  .mgrfeed{display:flex;align-items:center;gap:10px;padding:7px 10px;border-top:1px solid var(--line)}
+  .mgrfeed .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px}
+  .mgrfeed select{font-size:12px;padding:3px 6px}
+  .mgrfeed .del{color:var(--read);border:1px solid var(--line);border-radius:5px;padding:1px 7px;
+    font-size:11px;cursor:pointer;flex:none} .mgrfeed .del:hover{color:#b91c1c;border-color:#b91c1c}
+
+  /* toast */
+  #roBanner{background:var(--hi);color:var(--ink);border-bottom:1px solid var(--line);
+    padding:9px 24px;font-size:13px}
+  #roBanner a{font-weight:600}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:60;
+    background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:9px;font-size:13.5px;
+    box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw}
+  #toast.show{opacity:.96}
+
+  @media(max-width:760px){
+    .layout{flex-direction:column}
+    .rail{width:auto;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="rail">
+    <div class="brand"><span class="dot">★</span> Paper Radar</div>
+    <div id="tree"></div>
+  </nav>
+
+  <div class="content">
+    <header>
+      <span class="meta" id="hmeta"></span>
+      <span class="spacer"></span>
+      <button class="btn" id="unreadToggle">Hide read</button>
+      <button class="btn" id="themeBtn">◐</button>
+    </header>
+
+    <div id="roBanner" style="display:none">📭 <b>Read-only mode</b> — you've opened this as a file.
+      Open <a href="http://localhost:8137/dashboard.html">http://localhost:8137/dashboard.html</a>
+      for <b>⚙ Manage feeds</b>, the <b>⬇ PDF</b> buttons, and the latest data.</div>
+
+    <div class="wrap">
+      <section id="profileSection" style="display:none">
+        <details class="profile">
+          <summary><span class="chev">▸</span> What I'm filtering for <span class="meta" style="margin-left:auto">profile.md</span></summary>
+          <div class="body">
+            <pre id="profileText"></pre>
+            <div class="hint">This is read-only. Edit <code>profile.md</code> in this folder to retune ranking —
+            changes take effect on the next morning run (or an immediate manual re-run).</div>
+          </div>
+        </details>
+      </section>
+
+      <section id="picksSection">
+        <h2>★ AI Picks <span id="picksDate" class="meta"></span></h2>
+        <div class="picks" id="picks"></div>
+      </section>
+
+      <section id="readerSection" style="display:none">
+        <h2 id="listHead">All Feeds</h2>
+        <div class="toolbar">
+          <input id="search" placeholder="Search titles, authors, journals…">
+        </div>
+        <div class="scope" id="scope"></div>
+        <div class="list" id="list"></div>
+      </section>
+
+      <section id="manageSection" style="display:none">
+        <h2>Manage feeds</h2>
+        <div class="mgr">
+          <h3>Add a feed</h3>
+          <div class="row">
+            <input id="addFolder" list="folderList" placeholder="Folder (new or existing)" size="22">
+            <datalist id="folderList"></datalist>
+            <input id="addTitle" placeholder="Title (optional)" size="22">
+            <input id="addUrl" class="url" placeholder="RSS feed URL (https://…)">
+            <button class="btn" id="addBtn">Add</button>
+          </div>
+          <div class="note">The URL is fetched and validated before it's added. New feeds
+          start appearing after the next fetch (07:00, or a manual run).</div>
+        </div>
+        <div id="mgrList"></div>
+      </section>
+    </div>
+    <footer id="foot"></footer>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script src="data.js"></script>
+<script>
+const D = window.FEED_DATA || {ai_picks:[],by_folder:{},stats:{}};
+const LS_READ = "paperRadar.read";
+const read = new Set(JSON.parse(localStorage.getItem(LS_READ) || "[]"));
+let hideRead = localStorage.getItem("paperRadar.hideRead") === "1";
+let view = "picks"; // "picks" = AI Picks | "reader" = feed browser | "manage" = feed manager
+const PICKS_STEP = 25;        // AI picks revealed per "page"
+let picksShown = PICKS_STEP;  // how many are currently rendered (grows as you scroll)
+let picksObserver = null;     // IntersectionObserver that loads the next page near the bottom
+let cur = null; // null=all | {folder} = whole folder | {folder,feed} = one feed
+let hasBackend = false; // true when served by server.py (feed mgmt + PDF download)
+const $ = s => document.querySelector(s);
+
+function saveRead(){ localStorage.setItem(LS_READ, JSON.stringify([...read])); }
+function isRead(k){ return read.has(k); }
+function toggleRead(k){ read.has(k) ? read.delete(k) : read.add(k); saveRead(); renderAll(); }
+function fmtAuthors(a){ if(!a) return ""; const p=a.split(",");
+  return p.length>4 ? p.slice(0,3).join(",")+" et al." : a; }
+function esc(s){ const d=document.createElement("div"); d.textContent=s||""; return d.innerHTML; }
+function escA(s){ return esc(s).replace(/"/g,"&quot;"); } // attribute-safe
+
+/* ---------- backend (server.py) ---------- */
+async function api(path, body){
+  const opt = body ? {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)} : {};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+let toastT;
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),3000);
+}
+function pdfBtn(it){
+  if(!hasBackend) return "";
+  return `<span class="pdf" data-doi="${escA(it.doi||"")}" data-url="${escA(it.link||"")}" data-title="${escA(it.title||"")}">⬇ PDF</span>`;
+}
+async function doPdf(btn){
+  if(btn.classList.contains("busy")) return;
+  btn.classList.add("busy"); const old=btn.textContent; btn.textContent="…";
+  let r; try{ r=await api("/api/pdf",{doi:btn.dataset.doi,url:btn.dataset.url,title:btn.dataset.title}); }
+  catch(e){ r={ok:false,reason:"backend unreachable"}; }
+  btn.classList.remove("busy");
+  if(r.ok){ btn.classList.add("ok"); btn.textContent="✓ PDF"; toast("Saved to Downloads: "+r.filename); }
+  else{ btn.classList.add("fail"); btn.textContent="✕ PDF"; toast(r.reason||"Download failed");
+        setTimeout(()=>{btn.classList.remove("fail");btn.textContent=old;},3500); }
+}
+
+/* relative "time since release"; handles full ISO (→ "13h") or date-only (→ "2d"). */
+function relTime(it){
+  const raw = it.ts || it.published || "";
+  if(!raw) return "";
+  const then = new Date(raw);
+  if(isNaN(then)) return "";
+  const s = Math.max(0,(Date.now()-then.getTime())/1000);
+  const M=60,H=3600,DAY=86400,W=604800,MO=2629800,Y=31557600;
+  if(s<H)  return Math.max(1,Math.round(s/M))+"m";
+  if(s<DAY)return Math.round(s/H)+"h";
+  if(s<W)  return Math.round(s/DAY)+"d";
+  if(s<MO) return Math.round(s/W)+"w";
+  if(s<Y)  return Math.round(s/MO)+"mo";
+  return Math.round(s/Y)+"y";
+}
+
+/* "new" if the paper entered the system within the last 7 days (by first_seen). */
+const NEW_WINDOW_MS = 7*86400*1000;
+function isNew(it){
+  const raw = it.first_seen || "";
+  if(!raw) return false;
+  const t = new Date(raw);
+  if(isNaN(t)) return false;
+  return (Date.now()-t.getTime()) < NEW_WINDOW_MS;
+}
+
+/* ---------- AI picks ---------- */
+function renderPicks(){
+  const box = $("#picks"); box.innerHTML="";
+  if(picksObserver){ picksObserver.disconnect(); picksObserver=null; }
+  const picks = (D.ai_picks||[]).filter(p => !(hideRead && isRead(p.key)));
+  if(!picks.length){ box.innerHTML='<div class="empty">No unread AI picks right now. 🎉</div>'; return; }
+  picksShown = Math.min(Math.max(picksShown, PICKS_STEP), picks.length);
+  for(const p of picks.slice(0, picksShown)){
+    const el = document.createElement("div");
+    el.className = "pick" + (isRead(p.key)?" read":"");
+    el.innerHTML = `
+      <div class="top">
+        <div class="score">${Math.round(p.score)}</div>
+        <div style="flex:1;min-width:0">
+          <h3>${p.link?`<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.title)}</a>`:esc(p.title)}</h3>
+          <div class="sub">${esc(fmtAuthors(p.authors))}</div>
+          <div class="tags">
+            ${isNew(p)?`<span class="tag new" title="Added ${esc((p.first_seen||"").slice(0,10))}">new</span>`:""}
+            ${p.topic?`<span class="tag">${esc(p.topic)}</span>`:""}
+            <span class="tag j">${esc(p.journal)}</span>
+            ${pdfBtn(p)}
+            <span class="x" data-k="${esc(p.key)}">${isRead(p.key)?"↺ unread":"✓ mark read"}</span>
+          </div>
+        </div>
+        <span class="age" title="${esc(p.published)}">${esc(relTime(p))}</span>
+      </div>`;
+    el.querySelector(".x").onclick = () => toggleRead(p.key);
+    box.appendChild(el);
+  }
+  // reveal more on scroll (sentinel near the bottom); click as a fallback
+  if(picksShown < picks.length){
+    const more = document.createElement("div");
+    more.className = "picksmore";
+    more.textContent = `Showing ${picksShown} of ${picks.length} — scroll for more`;
+    const loadMore = () => { picksShown = Math.min(picksShown + PICKS_STEP, picks.length); renderPicks(); };
+    more.onclick = loadMore;
+    box.appendChild(more);
+    if("IntersectionObserver" in window){
+      picksObserver = new IntersectionObserver(es => { if(es.some(e=>e.isIntersecting)) loadMore(); },
+        {rootMargin:"400px"});
+      picksObserver.observe(more);
+    }
+  }
+}
+
+/* ---------- feed tree (rail) ---------- */
+function unreadCount(items){ return items.filter(i=>!isRead(i.key)).length; }
+function folderUnread(feeds){ let n=0; Object.values(feeds).forEach(it=>n+=unreadCount(it)); return n; }
+function renderTree(){
+  const tree = $("#tree"); tree.innerHTML="";
+
+  // ★ AI Picks — pinned tab at the top of the rail
+  const nPicks = (D.ai_picks||[]).filter(p=>!isRead(p.key)).length;
+  const picks = document.createElement("div");
+  picks.className="feed navpick"+(view==="picks"?" active":"");
+  picks.innerHTML=`<span>★ AI Picks</span><span class="n">${nPicks}</span>`;
+  picks.onclick=()=>{view="picks";picksShown=PICKS_STEP;renderAll();};
+  tree.appendChild(picks);
+  const sep=document.createElement("div"); sep.className="railsep"; tree.appendChild(sep);
+
+  let totUnread=0; Object.values(D.by_folder||{}).forEach(f=>totUnread+=folderUnread(f));
+  const all = document.createElement("div");
+  all.className="feed allf"+(view==="reader"&&cur===null?" active":"");
+  all.innerHTML=`<span>All feeds</span><span class="n">${totUnread}</span>`;
+  all.onclick=()=>{view="reader";cur=null;renderAll();};
+  tree.appendChild(all);
+
+  for(const [folder,feeds] of Object.entries(D.by_folder||{})){
+    const fActive = view==="reader" && cur && cur.folder===folder && !cur.feed;
+    const h=document.createElement("div");
+    h.className="fold"+(fActive?" active":"");
+    h.innerHTML=`<span title="${esc(folder)}">${esc(folder)}</span><span class="n">${folderUnread(feeds)}</span>`;
+    h.onclick=()=>{view="reader";cur={folder};renderAll();};
+    tree.appendChild(h);
+    for(const [feed,items] of Object.entries(feeds)){
+      const active = view==="reader" && cur && cur.folder===folder && cur.feed===feed;
+      const el=document.createElement("div");
+      el.className="feed kid"+(active?" active":"");
+      el.innerHTML=`<span title="${esc(feed)}">${esc(feed)}</span><span class="n">${unreadCount(items)}</span>`;
+      el.onclick=()=>{view="reader";cur={folder,feed};renderAll();};
+      tree.appendChild(el);
+    }
+  }
+
+  if(hasBackend){
+    const sep2=document.createElement("div"); sep2.className="railsep"; tree.appendChild(sep2);
+    const mng=document.createElement("div");
+    mng.className="feed"+(view==="manage"?" active":"");
+    mng.innerHTML=`<span>⚙ Manage feeds</span>`;
+    mng.onclick=()=>{view="manage";renderAll();};
+    tree.appendChild(mng);
+  }
+}
+
+/* ---------- manage feeds (needs backend) ---------- */
+async function renderManage(){
+  const box=$("#mgrList");
+  let data;
+  try{ data=await api("/api/feeds"); }
+  catch(e){ box.innerHTML='<div class="empty">Backend not reachable.</div>'; return; }
+  const folders=(data.folders||[]);
+  const names=folders.map(f=>f.name).filter(Boolean);
+  $("#folderList").innerHTML=names.map(n=>`<option value="${escA(n)}">`).join("");
+  box.innerHTML="";
+  for(const f of folders){
+    if(!f.name && !f.feeds.length) continue;
+    const h=document.createElement("div"); h.className="mgrfold";
+    h.innerHTML=`<span>${esc(f.name||"(no folder)")}</span>`;
+    if(f.name){
+      const ren=document.createElement("span"); ren.className="ftool"; ren.textContent="Rename";
+      ren.onclick=async ()=>{
+        const nn=(prompt("Rename folder:",f.name)||"").trim();
+        if(!nn || nn===f.name) return;
+        const r=await api("/api/folders/rename",{name:f.name,newName:nn});
+        toast(r.ok?`Renamed to ${nn}`:"Rename failed: "+(r.reason||"")); renderManage();
+      };
+      const del=document.createElement("span"); del.className="ftool danger"; del.textContent="Delete";
+      del.onclick=async ()=>{
+        const c=f.feeds.length;
+        if(!confirm(`Delete folder "${f.name}"`+(c?` and its ${c} feed(s)?`:"?"))) return;
+        const r=await api("/api/folders/delete",{name:f.name});
+        toast(r.ok?"Folder deleted":"Delete failed: "+(r.reason||"")); renderManage();
+      };
+      h.append(ren,del);
+    }
+    box.appendChild(h);
+    if(!f.feeds.length){ const e=document.createElement("div"); e.className="note"; e.textContent="(empty)"; box.appendChild(e); }
+    for(const fd of f.feeds){
+      const el=document.createElement("div"); el.className="mgrfeed";
+      const opts=names.map(n=>`<option ${n===f.name?"selected":""}>${escA(n)}</option>`).join("");
+      el.innerHTML=`<span class="nm" title="${escA(fd.xmlUrl)}">${esc(fd.title)}</span>
+        <select class="mv" title="Move to folder">${opts}</select>
+        <span class="del">Remove</span>`;
+      el.querySelector(".mv").onchange=async ev=>{
+        const r=await api("/api/feeds/move",{xmlUrl:fd.xmlUrl,toFolder:ev.target.value});
+        toast(r.ok?`Moved to ${ev.target.value}`:"Move failed"); renderManage();
+      };
+      el.querySelector(".del").onclick=async ()=>{
+        const r=await api("/api/feeds/remove",{xmlUrl:fd.xmlUrl});
+        toast(r.ok?"Removed feed":"Remove failed"); renderManage();
+      };
+      box.appendChild(el);
+    }
+  }
+}
+
+/* ---------- list ---------- */
+function gatherItems(){
+  if(!cur){
+    let items=[];
+    for(const f of Object.values(D.by_folder||{})) for(const arr of Object.values(f)) items=items.concat(arr);
+    return items;
+  }
+  const feeds = D.by_folder[cur.folder]||{};
+  if(cur.feed) return feeds[cur.feed]||[];
+  let items=[]; for(const arr of Object.values(feeds)) items=items.concat(arr); // whole folder
+  return items;
+}
+function scopeLabel(){
+  if(!cur) return "All feeds";
+  return cur.feed ? `${cur.folder} › ${cur.feed}` : `${cur.folder} (whole folder)`;
+}
+function renderList(){
+  $("#listHead").textContent = cur ? "Browse" : "All Feeds";
+  $("#scope").textContent = scopeLabel();
+  const list=$("#list"); list.innerHTML="";
+  const q=($("#search").value||"").toLowerCase().trim();
+  let items=gatherItems();
+  if(q) items=items.filter(i=>(i.title+" "+i.authors+" "+i.journal).toLowerCase().includes(q));
+  if(hideRead) items=items.filter(i=>!isRead(i.key));
+  // folder / all views mix feeds → sort newest-first; single feed keeps its own order
+  if(!cur || !cur.feed) items=items.slice().sort((a,b)=>((b.ts||b.published||"")).localeCompare(a.ts||a.published||""));
+  if(!items.length){ list.innerHTML='<div class="empty">Nothing here.</div>'; return; }
+  for(const i of items.slice(0,400)){
+    const el=document.createElement("div");
+    el.className="item"+(isRead(i.key)?" read":"");
+    const star = (i.score!=null && i.score>=D.threshold) ? `<span class="badge" title="AI score ${Math.round(i.score)}">★${Math.round(i.score)}</span>` : "";
+    const titleHtml = i.link?`<a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a>`:esc(i.title);
+    const src = cur && cur.feed ? esc(fmtAuthors(i.authors)) : esc(i.journal);
+    el.innerHTML=`
+      <span class="line">${star}${titleHtml}<span class="src">${src}</span></span>
+      <span class="age" title="${esc(i.published)}">${esc(relTime(i))}</span>
+      ${pdfBtn(i)}
+      <span class="mini" data-k="${esc(i.key)}">${isRead(i.key)?"unread":"read"}</span>`;
+    el.querySelector(".mini").onclick=()=>toggleRead(i.key);
+    list.appendChild(el);
+  }
+}
+
+function renderAll(){
+  $("#picksSection").style.display   = view==="picks"  ? "" : "none";
+  $("#readerSection").style.display  = view==="reader" ? "" : "none";
+  $("#manageSection").style.display  = view==="manage" ? "" : "none";
+  renderPicks(); renderTree(); renderList();
+  if(view==="manage") renderManage();
+}
+
+/* ---------- chrome ---------- */
+function setTheme(t){ document.documentElement.dataset.theme=t; localStorage.setItem("paperRadar.theme",t); }
+$("#themeBtn").onclick=()=>setTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");
+$("#unreadToggle").onclick=()=>{ hideRead=!hideRead; localStorage.setItem("paperRadar.hideRead",hideRead?"1":"0");
+  $("#unreadToggle").textContent=hideRead?"Show read":"Hide read"; renderAll(); };
+$("#search").oninput=renderList;
+document.addEventListener("click", e=>{ const b=e.target.closest(".pdf"); if(b) doPdf(b); });
+$("#addBtn").onclick=async ()=>{
+  const folder=$("#addFolder").value.trim(), title=$("#addTitle").value.trim(), xmlUrl=$("#addUrl").value.trim();
+  if(!xmlUrl){ toast("Enter a feed URL"); return; }
+  const btn=$("#addBtn"); btn.disabled=true; btn.textContent="Checking…";
+  let r; try{ r=await api("/api/feeds/add",{folder,title,xmlUrl}); }catch(e){ r={ok:false,reason:"backend unreachable"}; }
+  btn.disabled=false; btn.textContent="Add";
+  if(r.ok){ toast("Feed added ✓ — appears after next fetch"); $("#addUrl").value=""; $("#addTitle").value=""; renderManage(); }
+  else toast("Could not add: "+(r.reason||"error"));
+};
+
+(async function init(){
+  setTheme(localStorage.getItem("paperRadar.theme") ||
+    (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"));
+  $("#unreadToggle").textContent=hideRead?"Show read":"Hide read";
+  const s=D.stats||{};
+  const fdate = (s.last_fetch||"").slice(0,16).replace("T"," ");
+  $("#hmeta").textContent = `${s.total||0} items · ${s.ranked||0} ranked · updated ${fdate}`;
+  $("#picksDate").textContent = (D.generated_at||"").slice(0,10);
+  if(D.profile){ $("#profileText").textContent = D.profile; $("#profileSection").style.display=""; }
+  $("#foot").textContent = `Paper Radar · ${s.picks_available||0} papers scored ≥${D.threshold} · profile.md drives ranking · edit it to retune`;
+  // detect the local backend; feed-management + PDF buttons only appear when present
+  if(location.protocol.startsWith("http")){
+    try{ const p=await api("/api/ping"); hasBackend=!!(p&&p.ok); }catch(e){ hasBackend=false; }
+  }
+  document.body.classList.toggle("has-backend",hasBackend);
+  if(!hasBackend) $("#roBanner").style.display="";
+  renderAll();
+})();
+</script>
+</body>
+</html>

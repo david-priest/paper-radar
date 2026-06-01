@@ -1,0 +1,8 @@
+# This repo is a PUBLIC, read-only mirror of the Paper Radar dashboard.
+# Only index.html + data.js (profile-stripped) + .nojekyll are ever published.
+# Belt-and-suspenders: never let private inputs slip in here.
+profile.md
+*.opml
+feeds.db
+*.log
+.DS_Store
